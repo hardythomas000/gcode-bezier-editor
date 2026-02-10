@@ -197,7 +197,87 @@ const Audio = (() => {
     o.start(t); o.stop(t + 0.08);
   }
 
-  return { grab, drop, drag, select, hover, snap, zoom };
+  // Tracer — continuous synth that follows the traveling dot
+  // X maps to pitch, Y maps to filter cutoff, move type changes timbre
+  let trOsc = null, trOsc2 = null, trGain = null, trFilter = null, trStarted = false;
+  const TRACE_SCALES = {
+    // Pentatonic scale frequencies for musical XY mapping
+    notes: [130.8,146.8,164.8,196.0,220.0,261.6,293.7,329.6,392.0,440.0,523.3,587.3,659.3,784.0,880.0]
+  };
+
+  function tracerUpdate(x, y, moveType, bounds) {
+    const c = ac();
+    if (!trStarted) {
+      // Create persistent nodes
+      trOsc = c.createOscillator();
+      trOsc2 = c.createOscillator();
+      trFilter = c.createBiquadFilter();
+      trGain = c.createGain();
+      const compressor = c.createDynamicsCompressor();
+
+      trFilter.type = 'lowpass';
+      trFilter.Q.value = 6;
+      trOsc.type = 'sine';
+      trOsc2.type = 'triangle';
+
+      const g2 = c.createGain();
+      g2.gain.value = 0.3; // sub-oscillator quieter
+
+      trOsc.connect(trFilter);
+      trOsc2.connect(g2);
+      g2.connect(trFilter);
+      trFilter.connect(trGain);
+      trGain.connect(compressor);
+      compressor.connect(c.destination);
+      trGain.gain.value = 0;
+      trOsc.start();
+      trOsc2.start();
+      trStarted = true;
+    }
+
+    const t = c.currentTime;
+    const bw = (bounds.maxX - bounds.minX) || 1;
+    const bh = (bounds.maxY - bounds.minY) || 1;
+
+    // Normalize position 0-1
+    const nx = Math.max(0, Math.min(1, (x - bounds.minX) / bw));
+    const ny = Math.max(0, Math.min(1, (y - bounds.minY) / bh));
+
+    // X → pentatonic note (quantized for musicality)
+    const noteIdx = Math.floor(nx * (TRACE_SCALES.notes.length - 1));
+    const freq = TRACE_SCALES.notes[noteIdx];
+    trOsc.frequency.setTargetAtTime(freq, t, 0.05);
+    trOsc2.frequency.setTargetAtTime(freq * 0.5, t, 0.05); // octave below
+
+    // Y → filter cutoff (low Y = warm/muffled, high Y = bright/open)
+    const cutoff = 200 + ny * 3000;
+    trFilter.frequency.setTargetAtTime(cutoff, t, 0.03);
+
+    // Move type changes timbre
+    if (moveType === 0) {
+      // Rapid — quiet, high pitched blip
+      trGain.gain.setTargetAtTime(0.01, t, 0.02);
+      trOsc.type = 'sine';
+    } else if (moveType === 2 || moveType === 3) {
+      // Arcs — richer, slight detuning for movement feel
+      trGain.gain.setTargetAtTime(0.045, t, 0.02);
+      trOsc.type = 'sine';
+      trOsc2.frequency.setTargetAtTime(freq * 0.501, t, 0.05); // slight detune
+    } else {
+      // Linear cuts — clean
+      trGain.gain.setTargetAtTime(0.035, t, 0.02);
+      trOsc.type = 'sine';
+    }
+  }
+
+  function tracerStop() {
+    if (trGain && trStarted) {
+      const c = ac();
+      trGain.gain.setTargetAtTime(0, c.currentTime, 0.05);
+    }
+  }
+
+  return { grab, drop, drag, select, hover, snap, zoom, tracerUpdate, tracerStop };
 })();
 
 // ============================================================
@@ -215,6 +295,7 @@ const S = {
   showEdit: false,
   animT: 0,
   totalLen: 0,
+  bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
   mouse: { x: 0, y: 0, mx: 0, my: 0 },
   panning: false,
   panStart: { x: 0, y: 0, vx: 0, vy: 0 },
@@ -579,6 +660,10 @@ function drawTravelingDot() {
       const pt = pointOnSeg(seg, t);
       const p = m2c(pt.x, pt.y);
       const color = COLORS[`G${seg.type}`] || COLORS.G1;
+
+      // Feed position to tracer synth
+      Audio.tracerUpdate(pt.x, pt.y, seg.type, S.bounds);
+
       ctx.beginPath();
       ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#fff';
@@ -723,6 +808,13 @@ function rebuild() {
   S.segs = parseGcode(S.lines);
   S.pts = buildPoints(S.segs);
   S.totalLen = S.segs.reduce((a, s) => a + segLength(s), 0);
+  // Compute bounds for tracer synth
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of S.segs) {
+    minX = Math.min(minX, s.sx, s.ex); maxX = Math.max(maxX, s.sx, s.ex);
+    minY = Math.min(minY, s.sy, s.ey); maxY = Math.max(maxY, s.sy, s.ey);
+  }
+  S.bounds = { minX, minY, maxX, maxY };
   statusSegs.textContent = `${S.segs.length} segments`;
   statusLen.textContent = `${S.totalLen.toFixed(1)}mm`;
   renderCode();
