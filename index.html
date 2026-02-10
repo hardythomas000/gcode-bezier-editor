@@ -65,6 +65,142 @@ body{background:#0a0e17;color:#c9d1d9;font-family:'SF Mono','Fira Code',monospac
 </div>
 <script>
 // ============================================================
+// AUDIO ENGINE — synthesized SFX matching neon aesthetic
+// ============================================================
+const Audio = (() => {
+  let ctx = null;
+  function ac() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  // Grab point — rising resonant ping
+  function grab() {
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 2000; f.Q.value = 8;
+    o.type = 'sine';
+    o.frequency.setValueAtTime(300, t);
+    o.frequency.exponentialRampToValueAtTime(900, t + 0.08);
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    o.connect(f); f.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.15);
+  }
+
+  // Drop point — descending thud with sub bass
+  function drop() {
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const o2 = c.createOscillator();
+    const g = c.createGain();
+    const g2 = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(600, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.12);
+    g.gain.setValueAtTime(0.12, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.2);
+    // Sub thump
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(80, t);
+    o2.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+    g2.gain.setValueAtTime(0.2, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o2.connect(g2); g2.connect(c.destination);
+    o2.start(t); o2.stop(t + 0.18);
+  }
+
+  // Drag tick — subtle filtered click, pitch mapped to position
+  let lastTick = 0;
+  function drag(mx, my) {
+    const now = performance.now();
+    if (now - lastTick < 40) return; // throttle
+    lastTick = now;
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    const f = c.createBiquadFilter();
+    f.type = 'highpass'; f.frequency.value = 1500;
+    o.type = 'square';
+    // Map position to pitch
+    const pitch = 200 + (mx % 50) * 20 + (my % 50) * 10;
+    o.frequency.setValueAtTime(pitch, t);
+    g.gain.setValueAtTime(0.03, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    o.connect(f); f.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.03);
+  }
+
+  // Code line select — digital blip
+  function select() {
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const o2 = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine'; o.frequency.value = 1200;
+    o2.type = 'sine'; o2.frequency.value = 1800;
+    g.gain.setValueAtTime(0.08, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o.connect(g); o2.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.08);
+    o2.start(t + 0.02); o2.stop(t + 0.08);
+  }
+
+  // Hover — whisper tick
+  let lastHover = 0;
+  function hover() {
+    const now = performance.now();
+    if (now - lastHover < 100) return;
+    lastHover = now;
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine'; o.frequency.value = 2400;
+    g.gain.setValueAtTime(0.02, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.025);
+  }
+
+  // Snap — crisp tick
+  function snap() {
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'triangle'; o.frequency.value = 3000;
+    g.gain.setValueAtTime(0.1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.02);
+  }
+
+  // Zoom — filtered sweep
+  function zoom(dir) {
+    const c = ac(), t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 1500; f.Q.value = 5;
+    o.type = 'sawtooth';
+    const base = dir > 0 ? 200 : 500;
+    const end = dir > 0 ? 500 : 200;
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.exponentialRampToValueAtTime(end, t + 0.06);
+    g.gain.setValueAtTime(0.04, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o.connect(f); f.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.08);
+  }
+
+  return { grab, drop, drag, select, hover, snap, zoom };
+})();
+
+// ============================================================
 // STATE
 // ============================================================
 const S = {
@@ -523,6 +659,7 @@ function renderCode() {
     el.addEventListener('mouseleave', () => { S.hover.lineIdx = -1; renderCode(); render(); });
     el.addEventListener('click', () => {
       S.selLine = S.selLine === li ? -1 : li; // toggle
+      Audio.select();
       renderCode();
       render();
     });
@@ -613,6 +750,7 @@ canvas.addEventListener('mousedown', e => {
     S.hover.ptIdx = pi;
     S.hover.lineIdx = S.pts[pi].lineIdx;
     canvas.style.cursor = 'grabbing';
+    Audio.grab();
   } else {
     S.panning = true;
     S.panStart = { x: cx, y: cy, vx: S.view.px, vy: S.view.py };
@@ -628,6 +766,7 @@ canvas.addEventListener('mousemove', e => {
   coordsEl.textContent = `X: ${m.x.toFixed(3)}  Y: ${m.y.toFixed(3)}`;
 
   if (S.drag) {
+    Audio.drag(m.x, m.y);
     applyDrag(S.drag.ptIdx, m.x, m.y);
     return;
   }
@@ -641,6 +780,7 @@ canvas.addEventListener('mousemove', e => {
 
   const pi = findPoint(cx, cy, 14);
   if (pi !== S.hover.ptIdx) {
+    if (pi >= 0) Audio.hover();
     S.hover.ptIdx = pi;
     S.hover.lineIdx = pi >= 0 ? S.pts[pi].lineIdx : -1;
     canvas.style.cursor = pi >= 0 ? 'grab' : 'crosshair';
@@ -650,6 +790,7 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('mouseup', () => {
+  if (S.drag) Audio.drop();
   S.drag = null;
   S.panning = false;
   canvas.style.cursor = S.hover.ptIdx >= 0 ? 'grab' : 'crosshair';
@@ -675,6 +816,7 @@ canvas.addEventListener('wheel', e => {
   // Keep point under cursor stable
   S.view.px = cx - m.x * S.view.zoom;
   S.view.py = (canvas.height - cy) - m.y * S.view.zoom;
+  Audio.zoom(e.deltaY > 0 ? -1 : 1);
   render();
 }, { passive: false });
 
@@ -691,6 +833,7 @@ canvas.addEventListener('touchstart', e => {
       S.drag = { ptIdx: pi, ox: 0, oy: 0, tid: t.identifier };
       S.hover.ptIdx = pi;
       S.hover.lineIdx = S.pts[pi].lineIdx;
+      Audio.grab();
     } else if (!S.drag) {
       S.panning = true;
       S.panStart = { x: cx, y: cy, vx: S.view.px, vy: S.view.py };
@@ -706,6 +849,7 @@ canvas.addEventListener('touchmove', e => {
     const cx = t.clientX - r.left, cy = t.clientY - r.top;
     if (S.drag && S.drag.tid === t.identifier) {
       const m = c2m(cx, cy);
+      Audio.drag(m.x, m.y);
       applyDrag(S.drag.ptIdx, m.x, m.y);
     } else if (S.panning) {
       S.view.px = S.panStart.vx + (cx - S.panStart.x);
@@ -719,7 +863,7 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', e => {
   for (const t of e.changedTouches) {
     delete touches[t.identifier];
-    if (S.drag && S.drag.tid === t.identifier) S.drag = null;
+    if (S.drag && S.drag.tid === t.identifier) { Audio.drop(); S.drag = null; }
   }
   if (Object.keys(touches).length === 0) S.panning = false;
   render();
@@ -761,6 +905,7 @@ document.getElementById('bfit').addEventListener('click', fitView);
 document.getElementById('bsnap').addEventListener('click', function() {
   S.snap = !S.snap;
   this.classList.toggle('active', S.snap);
+  Audio.snap();
 });
 document.getElementById('bedit').addEventListener('click', function() {
   S.showEdit = !S.showEdit;
