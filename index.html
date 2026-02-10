@@ -52,6 +52,7 @@ body{background:#0a0e17;color:#c9d1d9;font-family:'SF Mono','Fira Code',monospac
       <h1>G-PATH</h1>
       <button class="btn" id="bfit">Fit</button>
       <button class="btn" id="bsnap">Snap</button>
+      <button class="btn active" id="bsound">Sound</button>
       <button class="btn" id="bedit">Edit</button>
     </div>
     <div id="coords">X: -- Y: --</div>
@@ -292,6 +293,7 @@ const S = {
   hover: { ptIdx: -1, lineIdx: -1 },
   selLine: -1,        // clicked/selected code line
   snap: false,
+  sound: true,
   showEdit: false,
   animT: 0,
   totalLen: 0,
@@ -662,7 +664,8 @@ function drawTravelingDot() {
       const color = COLORS[`G${seg.type}`] || COLORS.G1;
 
       // Feed position to tracer synth
-      Audio.tracerUpdate(pt.x, pt.y, seg.type, S.bounds);
+      if (S.sound) Audio.tracerUpdate(pt.x, pt.y, seg.type, S.bounds);
+      else Audio.tracerStop();
 
       ctx.beginPath();
       ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
@@ -744,7 +747,7 @@ function renderCode() {
     el.addEventListener('mouseleave', () => { S.hover.lineIdx = -1; renderCode(); render(); });
     el.addEventListener('click', () => {
       S.selLine = S.selLine === li ? -1 : li; // toggle
-      Audio.select();
+      if (S.sound) Audio.select();
       renderCode();
       render();
     });
@@ -842,7 +845,7 @@ canvas.addEventListener('mousedown', e => {
     S.hover.ptIdx = pi;
     S.hover.lineIdx = S.pts[pi].lineIdx;
     canvas.style.cursor = 'grabbing';
-    Audio.grab();
+    if (S.sound) Audio.grab();
   } else {
     S.panning = true;
     S.panStart = { x: cx, y: cy, vx: S.view.px, vy: S.view.py };
@@ -858,7 +861,7 @@ canvas.addEventListener('mousemove', e => {
   coordsEl.textContent = `X: ${m.x.toFixed(3)}  Y: ${m.y.toFixed(3)}`;
 
   if (S.drag) {
-    Audio.drag(m.x, m.y);
+    if (S.sound) Audio.drag(m.x, m.y);
     applyDrag(S.drag.ptIdx, m.x, m.y);
     return;
   }
@@ -872,7 +875,7 @@ canvas.addEventListener('mousemove', e => {
 
   const pi = findPoint(cx, cy, 14);
   if (pi !== S.hover.ptIdx) {
-    if (pi >= 0) Audio.hover();
+    if (pi >= 0 && S.sound) Audio.hover();
     S.hover.ptIdx = pi;
     S.hover.lineIdx = pi >= 0 ? S.pts[pi].lineIdx : -1;
     canvas.style.cursor = pi >= 0 ? 'grab' : 'crosshair';
@@ -882,7 +885,7 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('mouseup', () => {
-  if (S.drag) Audio.drop();
+  if (S.drag && S.sound) Audio.drop();
   S.drag = null;
   S.panning = false;
   canvas.style.cursor = S.hover.ptIdx >= 0 ? 'grab' : 'crosshair';
@@ -908,7 +911,7 @@ canvas.addEventListener('wheel', e => {
   // Keep point under cursor stable
   S.view.px = cx - m.x * S.view.zoom;
   S.view.py = (canvas.height - cy) - m.y * S.view.zoom;
-  Audio.zoom(e.deltaY > 0 ? -1 : 1);
+  if (S.sound) Audio.zoom(e.deltaY > 0 ? -1 : 1);
   render();
 }, { passive: false });
 
@@ -925,7 +928,7 @@ canvas.addEventListener('touchstart', e => {
       S.drag = { ptIdx: pi, ox: 0, oy: 0, tid: t.identifier };
       S.hover.ptIdx = pi;
       S.hover.lineIdx = S.pts[pi].lineIdx;
-      Audio.grab();
+      if (S.sound) Audio.grab();
     } else if (!S.drag) {
       S.panning = true;
       S.panStart = { x: cx, y: cy, vx: S.view.px, vy: S.view.py };
@@ -941,7 +944,7 @@ canvas.addEventListener('touchmove', e => {
     const cx = t.clientX - r.left, cy = t.clientY - r.top;
     if (S.drag && S.drag.tid === t.identifier) {
       const m = c2m(cx, cy);
-      Audio.drag(m.x, m.y);
+      if (S.sound) Audio.drag(m.x, m.y);
       applyDrag(S.drag.ptIdx, m.x, m.y);
     } else if (S.panning) {
       S.view.px = S.panStart.vx + (cx - S.panStart.x);
@@ -955,7 +958,7 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', e => {
   for (const t of e.changedTouches) {
     delete touches[t.identifier];
-    if (S.drag && S.drag.tid === t.identifier) { Audio.drop(); S.drag = null; }
+    if (S.drag && S.drag.tid === t.identifier) { if (S.sound) Audio.drop(); S.drag = null; }
   }
   if (Object.keys(touches).length === 0) S.panning = false;
   render();
@@ -997,7 +1000,12 @@ document.getElementById('bfit').addEventListener('click', fitView);
 document.getElementById('bsnap').addEventListener('click', function() {
   S.snap = !S.snap;
   this.classList.toggle('active', S.snap);
-  Audio.snap();
+  if (S.sound) Audio.snap();
+});
+document.getElementById('bsound').addEventListener('click', function() {
+  S.sound = !S.sound;
+  this.classList.toggle('active', S.sound);
+  if (!S.sound) Audio.tracerStop();
 });
 document.getElementById('bedit').addEventListener('click', function() {
   S.showEdit = !S.showEdit;
